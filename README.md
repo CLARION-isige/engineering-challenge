@@ -10,7 +10,7 @@ Kenya Law (kenyalaw.org) is the official repository of Kenya's laws, case law re
 
 **Tasks**:
 - Navigate to the Kenya Law Reports section
-- Extract the following for at least 10 recent cases:
+- Extract the following for at least 25 recent cases:
   - Case name/title
   - Citation reference
   - Court name
@@ -34,7 +34,7 @@ Kenya Law (kenyalaw.org) is the official repository of Kenya's laws, case law re
 - Categorize by legal area (e.g., Criminal, Civil, Constitutional)
 - Store in a structured JSON format
 
-**Success Criteria**: Extract metadata for 50+ Acts with proper categorization
+**Success Criteria**: Extract metadata for 25+ Acts with proper categorization
 
 ---
 
@@ -42,7 +42,7 @@ Kenya Law (kenyalaw.org) is the official repository of Kenya's laws, case law re
 **Objective**: Deep dive into judgment content
 
 **Tasks**:
-- Scrape full judgment text for 20+ cases
+- Scrape full judgment text for 25+ cases
 - Extract structured information:
   - Parties involved (plaintiff/defendant)
   - Case summary/synopsis
@@ -56,16 +56,27 @@ Kenya Law (kenyalaw.org) is the official repository of Kenya's laws, case law re
 
 ---
 
-## Technical Requirements
+## Technical Implementation
+This project has been fully migrated to an asynchronous architecture using `asyncio`, `aiohttp`, and `AsyncElasticsearch` for maximum performance and concurrent scraping.
 
-### Tools Suggested
-- **Python**: aiohttp and BeautifulSoup4
-- **Storage**: Elasticsearch
+### Stack
+- **Languages**: Python 3.11+
+- **Asynchronous IO**: `asyncio`, `aiohttp`, `aiofiles`
+- **Scraping**: `BeautifulSoup4`, `lxml`
+- **Storage**: Elasticsearch (Asynchronous indexing)
+- **Utilities**: `fake-useragent`, `python-dateutil`
 
+## Getting Started
+1. Install dependencies: `pip install -r requirements.txt`
+2. Configure Elasticsearch in `.env`
+3. Run scrapers via `main.py`:
+   - `python main.py case_extraction --num-cases 25`
+   - `python main.py legislation --min-acts 25`
+   - `python main.py case_analysis --num-cases 25`
+   - `python main.py all --concurrent`
 
 ## Resources
 - **Website**: http://www.kenyalaw.org/
-- **Useful Python Libraries**: requests, BeautifulSoup4, lxml, pandas, selenium
-- **Documentation**: robots.txt parser, rate limiting strategies
+- **Legal Database**: https://new.kenyalaw.org/
 
 **Good luck! Remember: scrape responsibly and ethically.** 🚀

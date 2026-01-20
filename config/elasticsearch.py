@@ -1,19 +1,16 @@
-"""
-Elasticsearch configuration and utilities for Kenya Law scraping project.
-"""
-
 import os
-from elasticsearch import Elasticsearch
+from elasticsearch import AsyncElasticsearch
 from dotenv import load_dotenv
 import logging
 import hashlib
+import asyncio
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 class ElasticsearchConfig:
-    """Elasticsearch configuration and connection management."""
+    """Elasticsearch configuration and connection management (Async)."""
     
     def __init__(self):
         self.host = os.getenv('ELASTICSEARCH_HOST', 'localhost')
@@ -22,41 +19,53 @@ class ElasticsearchConfig:
         self.username = os.getenv('ELASTICSEARCH_USERNAME')
         self.password = os.getenv('ELASTICSEARCH_PASSWORD')
         
-        self.client = self._create_client()
-    
-    def _create_client(self):
-        """Create and return Elasticsearch client."""
+        self.client = None
+
+    async def connect(self):
+        """Initialize the async client."""
+        if self.client:
+            return self.client
+            
         try:
+            hosts = [{'host': self.host, 'port': self.port, 'scheme': 'http'}]
             if self.username and self.password:
-                es = Elasticsearch(
-                    hosts=[{'host': self.host, 'port': self.port, 'scheme': 'http'}],
+                self.client = AsyncElasticsearch(
+                    hosts=hosts,
                     http_auth=(self.username, self.password)
                 )
             else:
-                es = Elasticsearch(
-                    hosts=[{'host': self.host, 'port': self.port, 'scheme': 'http'}]
-                )
+                self.client = AsyncElasticsearch(hosts=hosts)
             
             # Test connection
-            if es.ping():
+            if await self.client.ping():
                 logger.info(f"Connected to Elasticsearch at {self.host}:{self.port}")
-                return es
             else:
                 logger.error("Failed to connect to Elasticsearch")
-                return None
+                self.client = None
                 
         except Exception as e:
             logger.error(f"Error connecting to Elasticsearch: {e}")
-            return None
-    
-    def create_index(self, mapping=None):
+            self.client = None
+        
+        return self.client
+
+    async def close(self):
+        """Close the async client session."""
+        if self.client:
+            await self.client.close()
+            self.client = None
+            logger.info("Elasticsearch client connection closed.")
+
+    async def create_index(self, mapping=None):
         """Create index with mapping if it doesn't exist."""
+        if not self.client:
+            await self.connect()
         if not self.client:
             return False
             
         try:
-            if not self.client.indices.exists(index=self.index_name):
-                self.client.indices.create(
+            if not await self.client.indices.exists(index=self.index_name):
+                await self.client.indices.create(
                     index=self.index_name,
                     body=mapping or self._get_default_mapping()
                 )
@@ -66,14 +75,16 @@ class ElasticsearchConfig:
             logger.error(f"Error creating index: {e}")
             return False
 
-    def delete_index(self):
+    async def delete_index(self):
         """Delete the index if it exists."""
+        if not self.client:
+            await self.connect()
         if not self.client:
             return False
             
         try:
-            if self.client.indices.exists(index=self.index_name):
-                self.client.indices.delete(index=self.index_name)
+            if await self.client.indices.exists(index=self.index_name):
+                await self.client.indices.delete(index=self.index_name)
                 logger.info(f"Deleted index: {self.index_name}")
                 return True
             else:
@@ -105,8 +116,10 @@ class ElasticsearchConfig:
             }
         }
     
-    def index_document(self, doc, doc_id=None):
+    async def index_document(self, doc, doc_id=None):
         """Index a document."""
+        if not self.client:
+            await self.connect()
         if not self.client:
             return False
         
@@ -115,7 +128,7 @@ class ElasticsearchConfig:
             doc_id = self._generate_doc_id(doc)
         
         try:
-            response = self.client.index(
+            response = await self.client.index(
                 index=self.index_name,
                 body=doc,
                 id=doc_id
@@ -129,31 +142,40 @@ class ElasticsearchConfig:
     def _generate_doc_id(self, doc):
         """Generate unique document ID from content."""
         try:
-            import hashlib
-            # Create a consistent ID from key fields
-            content_parts = []
-            if doc.get('case_name'):
-                content_parts.append(doc['case_name'])
-            if doc.get('citation'):
-                content_parts.append(doc['citation'])
-            if doc.get('act_title'):
-                content_parts.append(doc['act_title'])
-            if doc.get('chapter_number'):
-                content_parts.append(doc['chapter_number'])
+            # Prioritize source_url for unique identification
+            if doc.get('source_url'):
+                identifier = doc['source_url']
+            else:
+                # Fallback to key fields if source_url is missing
+                content_parts = []
+                if doc.get('case_name'):
+                    content_parts.append(doc['case_name'])
+                if doc.get('citation'):
+                    content_parts.append(doc['citation'])
+                if doc.get('act_title'):
+                    content_parts.append(doc['act_title'])
+                if doc.get('chapter_number'):
+                    content_parts.append(doc['chapter_number'])
+                
+                identifier = '|'.join(content_parts)
             
-            content_string = '|'.join(content_parts)
-            return hashlib.sha256(content_string.encode('utf-8')).hexdigest()[:16]
+            if not identifier:
+                identifier = str(doc)
+                
+            return hashlib.sha256(identifier.encode('utf-8')).hexdigest()[:24]
         except Exception as e:
             logger.warning(f"Error generating doc ID: {e}")
-            return f"doc_{hashlib.md5(str(doc).encode('utf-8')).hexdigest()[:8]}"
+            return f"doc_{hashlib.md5(str(doc).encode('utf-8')).hexdigest()[:12]}"
     
-    def search(self, query, size=10):
+    async def search(self, query, size=10):
         """Search documents."""
+        if not self.client:
+            await self.connect()
         if not self.client:
             return []
             
         try:
-            response = self.client.search(
+            response = await self.client.search(
                 index=self.index_name,
                 body=query,
                 size=size

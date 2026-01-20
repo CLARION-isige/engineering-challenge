@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Main entry point for Kenya Law Web Scraping Challenge
+Main entry point for Kenya Law Web Scraping Challenge (Async)
 Provides CLI interface to run all scrapers.
 """
 
 import argparse
 import sys
 import os
+import asyncio
 from datetime import datetime
 
 # Add src directory to path
@@ -16,127 +17,161 @@ from case_extraction import LawExtractionScraper
 from legislation import LegislationScraper
 from case_analysis import CaseAnalysisScraper
 
-
-def run_case_extraction(args):
+async def run_case_extraction(args):
     """Run case_extraction scraper."""
     print("Starting Basic Case Law Extraction")
     print(f"   Target: {args.num_cases} recent cases")
     
     scraper = LawExtractionScraper()
-    cases = scraper.scrape(num_cases=args.num_cases)
-    
-    if cases:
-        success = scraper.save_data(cases, args.output)
-        if success:
-            print(f"Successfully extracted and saved {len(cases)} cases")
-            print(f"    Output: {args.output}")
+    try:
+        cases = await scraper.scrape(num_cases=args.num_cases)
+        
+        if cases:
+            success = await scraper.save_data(cases, args.output)
+            if success:
+                print(f"Successfully extracted and saved {len(cases)} cases")
+                print(f"    Output: {args.output if args.output else 'auto-generated'}")
+            else:
+                print("Failed to save data")
         else:
-            print("Failed to save data")
-    else:
-        print("Failed to extract any cases")
+            print("Failed to extract any cases")
+    finally:
+        await scraper.close()
+        if scraper.es_config.client:
+            await scraper.es_config.close()
 
-
-def run_legislation(args):
+async def run_legislation(args):
     """Run legislation scraper."""
     print("🚀 Starting Legislation Database")
     print(f"   Target: {args.min_acts}+ Acts")
     
     scraper = LegislationScraper()
-    acts = scraper.scrape(min_acts=args.min_acts)
-    
-    if acts:
-        success = scraper.save_data(acts, args.output)
-        if success:
-            print(f"✅ Successfully extracted and saved {len(acts)} Acts")
-            print(f"   Output: {args.output}")
+    try:
+        acts = await scraper.scrape(min_acts=args.min_acts)
+        
+        if acts:
+            success = await scraper.save_data(acts, args.output)
+            if success:
+                print(f"✅ Successfully extracted and saved {len(acts)} Acts")
+                print(f"   Output: {args.output if args.output else 'auto-generated'}")
+            else:
+                print("Failed to save data")
         else:
-            print("Failed to save data")
-    else:
-        print("Failed to extract any Acts")
+            print("Failed to extract any Acts")
+    finally:
+        await scraper.close()
+        if scraper.es_config.client:
+            await scraper.es_config.close()
 
-
-def run_case_analysis(args):
+async def run_case_analysis(args):
     """Run case_analysis scraper."""
     print("Starting Full-Text Case Analysis")
     print(f"    Target: {args.num_cases} cases")
     
     scraper = CaseAnalysisScraper()
-    
-    # Get case URLs if provided
-    case_urls = None
-    if args.urls:
-        case_urls = args.urls
-    
-    analyzed_cases = scraper.scrape(case_urls=case_urls, num_cases=args.num_cases)
-    
-    if analyzed_cases:
-        success = scraper.save_data(analyzed_cases, args.output)
-        if success:
-            print(f"Successfully analyzed and saved {len(analyzed_cases)} cases")
-            print(f"   Output: {args.output}")
+    try:
+        # Get case URLs if provided
+        case_urls = None
+        if args.urls:
+            case_urls = args.urls
+        
+        analyzed_cases = await scraper.scrape(case_urls=case_urls, num_cases=args.num_cases)
+        
+        if analyzed_cases:
+            success = await scraper.save_data(analyzed_cases, args.output)
+            if success:
+                print(f"Successfully analyzed and saved {len(analyzed_cases)} cases")
+                print(f"   Output: {args.output if args.output else 'auto-generated'}")
+            else:
+                print("Failed to save data")
         else:
-            print("Failed to save data")
-    else:
-        print("Failed to analyze any cases")
+            print("Failed to analyze any cases")
+    finally:
+        await scraper.close()
+        if scraper.es_config.client:
+            await scraper.es_config.close()
 
-
-def run_all(args):
-    """Run all scrapers sequentially."""
-    print("Starting All Scrapers: Complete Kenya Law Scraping")
+async def run_all(args):
+    """Run all scrapers sequentially or concurrently."""
+    print(f"Starting All Scrapers: Complete Kenya Law Scraping ({'Concurrent' if args.concurrent else 'Sequential'})")
     print("=" * 60)
     
-    # case_extraction
-    print("\n📋 Basic Case Law Extraction")
-    case_extraction_scraper = LawExtractionScraper()
-    cases = case_extraction_scraper.scrape(num_cases=args.num_cases)
-    
-    if cases:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        case_extraction_output = f'output/cases_{timestamp}.csv'
-        case_extraction_scraper.save_data(cases, case_extraction_output)
-        print(f"Case extraction completed: {len(cases)} cases saved")
+    if args.concurrent:
+        # Concurrent execution
+        tasks = [
+            run_case_extraction(argparse.Namespace(num_cases=args.num_cases, output=None)),
+            run_legislation(argparse.Namespace(min_acts=args.min_acts, output=None)),
+            run_case_analysis(argparse.Namespace(num_cases=args.num_cases, output=None, urls=None))
+        ]
+        await asyncio.gather(*tasks)
     else:
-        print("Case extraction failed")
-        return
-    
-    # legislation
-    print("\n Legislation Database")
-    legislation_scraper = LegislationScraper()
-    acts = legislation_scraper.scrape(min_acts=args.min_acts)
-    
-    if acts:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        legislation_output = f'output/legislation_{timestamp}.json'
-        legislation_scraper.save_data(acts, legislation_output)
-        print(f"Legislation extraction completed: {len(acts)} Acts saved")
-    else:
-        print("Legislation extraction failed")
-        return
-    
-    # case_analysis
-    print("\n🔍 Full-Text Case Analysis")
-    case_analysis_scraper = CaseAnalysisScraper()
-    analyzed_cases = case_analysis_scraper.scrape(num_cases=args.num_cases)
-    
-    if analyzed_cases:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        case_analysis_output = f'output/case_analysis_{timestamp}.json'
-        case_analysis_scraper.save_data(analyzed_cases, case_analysis_output)
-        print(f"Case analysis completed: {len(analyzed_cases)} cases analyzed")
-    else:
-        print("Case analysis failed")
-        return
+        # Sequential execution
+        
+        # case_extraction
+        print("\n📋 Basic Case Law Extraction")
+        case_extraction_scraper = LawExtractionScraper()
+        cases = []
+        try:
+            cases = await case_extraction_scraper.scrape(num_cases=args.num_cases)
+            
+            if cases:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                case_extraction_output = f'output/cases_{timestamp}.csv'
+                await case_extraction_scraper.save_data(cases, case_extraction_output)
+                print(f"Case extraction completed: {len(cases)} cases saved")
+            else:
+                print("Case extraction failed")
+                return
+        finally:
+            await case_extraction_scraper.close()
+            if case_extraction_scraper.es_config.client:
+                await case_extraction_scraper.es_config.close()
+        
+        # legislation
+        print("\n Legislation Database")
+        legislation_scraper = LegislationScraper()
+        acts = []
+        try:
+            acts = await legislation_scraper.scrape(min_acts=args.min_acts)
+            
+            if acts:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                legislation_output = f'output/legislation_{timestamp}.json'
+                await legislation_scraper.save_data(acts, legislation_output)
+                print(f"Legislation extraction completed: {len(acts)} Acts saved")
+            else:
+                print("Legislation extraction failed")
+                return
+        finally:
+            await legislation_scraper.close()
+            if legislation_scraper.es_config.client:
+                await legislation_scraper.es_config.close()
+        
+        # case_analysis
+        print("\n🔍 Full-Text Case Analysis")
+        case_analysis_scraper = CaseAnalysisScraper()
+        analyzed_cases = []
+        try:
+            analyzed_cases = await case_analysis_scraper.scrape(num_cases=args.num_cases)
+            
+            if analyzed_cases:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                case_analysis_output = f'output/case_analysis_{timestamp}.json'
+                await case_analysis_scraper.save_data(analyzed_cases, case_analysis_output)
+                print(f"Case analysis completed: {len(analyzed_cases)} cases analyzed")
+            else:
+                print("Case analysis failed")
+                return
+        finally:
+            await case_analysis_scraper.close()
+            if case_analysis_scraper.es_config.client:
+                await case_analysis_scraper.es_config.close()
     
     print("\n" + "=" * 60)
-    print("All scrapers completed successfully!")
-    print(f"Summary:")
-    print(f"   Case Extraction: {len(cases)} cases extracted")
-    print(f"   Legislation: {len(acts)} Acts extracted")
-    print(f"   Case Analysis: {len(analyzed_cases)} cases analyzed")
+    print("All scrapers finished!")
 
-
-def main():
-    """Main CLI interface."""
+async def main_async():
+    """Main CLI interface (Async)."""
     parser = argparse.ArgumentParser(
         description="Kenya Law Web Scraping Challenge",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -145,7 +180,7 @@ Examples:
   python main.py case_extraction --num-cases 15
   python main.py legislation --min-acts 75 --output my_acts.json
   python main.py case_analysis --num-cases 25 --output analysis.json
-  python main.py all --num-cases 10 --min-acts 50
+  python main.py all --num-cases 10 --min-acts 50 --concurrent
         """
     )
     
@@ -153,7 +188,7 @@ Examples:
     
     # case_extraction parser
     case_extraction_parser = subparsers.add_parser('case_extraction', help='Run case_extraction scraper')
-    case_extraction_parser.add_argument('--num-cases', type=int, default=10,
+    case_extraction_parser.add_argument('--num-cases', type=int, default=25,
                                help='Number of cases to extract (default: 10)')
     case_extraction_parser.add_argument('--output', type=str,
                                help='Output filename (default: auto-generated)')
@@ -161,7 +196,7 @@ Examples:
     
     # legislation parser
     legislation_parser = subparsers.add_parser('legislation', help='Run legislation scraper')
-    legislation_parser.add_argument('--min-acts', type=int, default=50,
+    legislation_parser.add_argument('--min-acts', type=int, default=25,
                                help='Minimum number of Acts to extract (default: 50)')
     legislation_parser.add_argument('--output', type=str,
                                help='Output filename (default: auto-generated)')
@@ -169,7 +204,7 @@ Examples:
     
     # case_analysis parser
     case_analysis_parser = subparsers.add_parser('case_analysis', help='Run case_analysis scraper')
-    case_analysis_parser.add_argument('--num-cases', type=int, default=20,
+    case_analysis_parser.add_argument('--num-cases', type=int, default=25,
                                help='Number of cases to analyze (default: 20)')
     case_analysis_parser.add_argument('--urls', nargs='*',
                                help='Specific case URLs to analyze')
@@ -179,10 +214,12 @@ Examples:
     
     # All scrapers parser
     all_parser = subparsers.add_parser('all', help='Run all scrapers')
-    all_parser.add_argument('--num-cases', type=int, default=10,
+    all_parser.add_argument('--num-cases', type=int, default=25,
                            help='Number of cases for case_extraction & case_analysis (default: 10)')
-    all_parser.add_argument('--min-acts', type=int, default=50,
+    all_parser.add_argument('--min-acts', type=int, default=25,
                            help='Minimum number of Acts for legislation (default: 50)')
+    all_parser.add_argument('--concurrent', action='store_true',
+                           help='Run scrapers concurrently using asyncio.gather')
     all_parser.set_defaults(func=run_all)
     
     # Parse arguments
@@ -197,13 +234,21 @@ Examples:
     
     # Run the appropriate function
     try:
-        args.func(args)
+        await args.func(args)
     except KeyboardInterrupt:
         print("\n Scraping interrupted by user")
     except Exception as e:
         print(f" Error: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
+def main():
+    """Wrapper for async main."""
+    try:
+        asyncio.run(main_async())
+    except KeyboardInterrupt:
+        pass
 
 if __name__ == "__main__":
     main()

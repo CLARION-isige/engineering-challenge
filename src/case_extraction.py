@@ -1,10 +1,6 @@
-"""
-Basic Case Law Extraction
-Extracts recent court judgments/case law from Kenya Law website.
-"""
-
 import csv
 import os
+import asyncio
 from datetime import datetime
 from typing import List, Dict, Optional
 from urllib.parse import urljoin, urlparse
@@ -19,7 +15,7 @@ from utils.scraper_base import ScraperBase
 from config.elasticsearch import ElasticsearchConfig
 
 class LawExtractionScraper(ScraperBase):
-    """Scraper for basic case law extraction."""
+    """Scraper for basic case law extraction (Async)."""
     
     def __init__(self):
         super().__init__("case_extraction")
@@ -56,7 +52,7 @@ class LawExtractionScraper(ScraperBase):
         except ValueError:
             return cleaned
     
-    def scrape(self, num_cases: int = 10) -> List[Dict]:
+    async def scrape(self, num_cases: int = 10) -> List[Dict]:
         """
         Scrape recent case law data.
         
@@ -74,7 +70,7 @@ class LawExtractionScraper(ScraperBase):
         # 1. Try new site first (Primary Source)
         try:
             self.logger.info("Attempting to scrape from new site...")
-            cases = self._scrape_new_site(num_cases)
+            cases = await self._scrape_new_site(num_cases)
             if cases:
                 self.logger.info(f"Successfully extracted {len(cases)} cases from new site")
                 return cases
@@ -84,7 +80,7 @@ class LawExtractionScraper(ScraperBase):
         # 2. Try old site main page (Fallback)
         try:
             self.logger.info("Attempting to scrape from old site main page...")
-            cases = self._scrape_old_site_main_page(num_cases)
+            cases = await self._scrape_old_site_main_page(num_cases)
             if cases:
                 self.logger.info(f"Successfully extracted {len(cases)} cases from old site main page")
                 return cases
@@ -99,28 +95,27 @@ class LawExtractionScraper(ScraperBase):
             self.logger.warning("Failed to extract any cases from any source")
             return []
 
-    def _scrape_new_site_feed(self, num_cases: int) -> List[Dict]:
+    async def _scrape_new_site_feed(self, num_cases: int) -> List[Dict]:
         """Scrape recent judgments from the Kenya Law Atom feed."""
         cases: List[Dict] = []
 
         try:
             feed_url = f"{self.new_base_url}/feeds/all.xml"
-            response = self._make_request(feed_url)
-            if not response:
+            html_content = await self._make_request(feed_url)
+            if not html_content:
                 return cases
 
-            self.logger.info(
-                "Feed fetch ok: status=%s content_type=%s size=%s",
-                response.status_code,
-                response.headers.get("Content-Type"),
-                len(response.content),
-            )
+            self.logger.info("Feed fetch ok")
 
-            soup = BeautifulSoup(response.content, "xml")
+            soup = BeautifulSoup(html_content, "xml")
             entries = soup.find_all("entry")
             self.logger.info("Feed entries found: %s", len(entries))
 
+            tasks = []
             for entry in entries:
+                if len(cases) + len(tasks) >= num_cases:
+                    break
+                    
                 link_elem = entry.find("link", href=True)
                 if not link_elem:
                     continue
@@ -141,9 +136,6 @@ class LawExtractionScraper(ScraperBase):
                 if not (is_judgment_category or is_judgment_link):
                     continue
 
-                if len(cases) == 0:
-                    self.logger.info("First judgment link from feed: %s", link)
-
                 title_elem = entry.find("title")
                 date_elem = entry.find("updated") or entry.find("published")
 
@@ -160,84 +152,81 @@ class LawExtractionScraper(ScraperBase):
                 }
 
                 if case_data["case_name"]:
-                    # Fetch detailed metadata
-                    if case_data.get('source_url'):
-                         self.logger.info(f"Fetching details for case: {case_data['source_url']}")
-                         details = self._fetch_case_details(case_data['source_url'])
-                         if details:
-                             case_data.update(details)
-                    
-                    cases.append(case_data)
-                
-                if len(cases) >= num_cases:
-                    break
+                    # Fetch detailed metadata concurrently
+                    tasks.append(self._fetch_and_update_details(case_data))
+            
+            if tasks:
+                updated_cases = await asyncio.gather(*tasks)
+                cases.extend([c for c in updated_cases if c])
 
         except Exception as e:
             self.logger.error(f"Error scraping new site feed: {e}")
 
         return cases
     
-    def _scrape_new_site(self, num_cases: int) -> List[Dict]:
+    async def _fetch_and_update_details(self, case_data: Dict) -> Dict:
+        """Helper to fetch details and update case data."""
+        if case_data.get('source_url'):
+            self.logger.debug(f"Fetching details for case: {case_data['source_url']}")
+            details = await self._fetch_case_details(case_data['source_url'])
+            if details:
+                case_data.update(details)
+        return case_data
+
+    async def _scrape_new_site(self, num_cases: int) -> List[Dict]:
         """Scrape from the new Kenya Law website."""
         cases = []
         
         try:
-            feed_cases = self._scrape_new_site_feed(num_cases)
+            feed_cases = await self._scrape_new_site_feed(num_cases)
             if feed_cases:
                 return feed_cases
 
             # Access judgments page
             url = f"{self.new_base_url}/judgments/"
-            response = self._make_request(url)
+            html_content = await self._make_request(url)
             
-            if not response:
+            if not html_content:
                 return cases
             
-            soup = self._parse_html(response)
+            soup = self._parse_html(html_content)
             if not soup:
                 return cases
             
-            # Find case listings (adjust selectors based on actual site structure)
+            # Find case listings
             case_elements = soup.find_all(['div', 'article', 'tr'], 
                                         class_=re.compile(r'case|judgment|decision', re.I))
             
             if not case_elements:
-                # Try alternative selectors
                 case_elements = soup.find_all('a', href=re.compile(r'judgment|case', re.I))
             
+            tasks = []
             for element in case_elements[:num_cases]:
                 case_data = self._extract_case_data_new(element)
                 if case_data:
-                    # Visit the case page to get more details
-                    if case_data.get('source_url'):
-                        self.logger.info(f"Fetching details for case: {case_data['source_url']}")
-                        details = self._fetch_case_details(case_data['source_url'])
-                        if details:
-                            # Update with detailed info
-                            case_data.update(details)
-                            
-                    cases.append(case_data)
+                    tasks.append(self._fetch_and_update_details(case_data))
+            
+            if tasks:
+                updated_cases = await asyncio.gather(*tasks)
+                cases.extend([c for c in updated_cases if c])
                     
         except Exception as e:
             self.logger.error(f"Error scraping new site: {e}")
         
-        return cases
+        return cases[:num_cases]
     
-    def _fetch_case_details(self, case_url: str) -> Dict:
+    async def _fetch_case_details(self, case_url: str) -> Dict:
         """Fetch and extract details from the specific case page."""
         details = {}
         try:
-            response = self._make_request(case_url)
-            if not response:
+            html_content = await self._make_request(case_url)
+            if not html_content:
                 return details
                 
-            soup = self._parse_html(response)
+            soup = self._parse_html(html_content)
             if not soup:
                 return details
                 
-            # Reuse the extraction logic (similar to case_analysis but simplified for this scraper)
-            # Find document details section
-            
             labels_map = {
                 'Citation': 'citation',
                 'Court': 'court',
@@ -246,7 +235,7 @@ class LawExtractionScraper(ScraperBase):
             }
             
             for label_text, key in labels_map.items():
-                elements = soup.find_all(text=lambda t: t and label_text in t)
+                elements = soup.find_all(string=lambda t: t and label_text in t)
                 for elem in elements:
                     if len(elem.strip()) > 50:
                         continue
@@ -283,25 +272,22 @@ class LawExtractionScraper(ScraperBase):
             
         return details
     
-    def _scrape_old_site_main_page(self, num_cases: int) -> List[Dict]:
+    async def _scrape_old_site_main_page(self, num_cases: int) -> List[Dict]:
         """Scrape from the old Kenya Law website main page."""
         cases = []
         
         try:
-            # Access main page
             url = f"{self.base_url}/"
-            response = self._make_request(url, follow_redirects=False)
+            html_content = await self._make_request(url, follow_redirects=False)
             
-            if not response:
+            if not html_content:
                 self.logger.warning("Main site not accessible")
                 return cases
             
-            soup = self._parse_html(response)
+            soup = self._parse_html(html_content)
             if not soup:
                 return cases
             
-            # Look for any links that might be recent cases or judgments
-            # Try multiple selectors to find case-related content
             selectors = [
                 'a[href*="judgment"]',
                 'a[href*="case"]', 
@@ -320,7 +306,6 @@ class LawExtractionScraper(ScraperBase):
                         if href and href not in found_links:
                             found_links.add(href)
                             
-                            # Create basic case data
                             case_data = {
                                 'case_name': link.get_text(strip=True),
                                 'citation': '',
@@ -348,45 +333,6 @@ class LawExtractionScraper(ScraperBase):
         
         return cases[:num_cases]
     
-    def _scrape_old_site(self, num_cases: int) -> List[Dict]:
-        """Scrape from the old Kenya Law website."""
-        cases = []
-        
-        try:
-            # Access main page first to avoid redirects
-            main_url = f"{self.base_url}"
-            main_response = self._make_request(main_url, follow_redirects=False)
-            
-            if not main_response:
-                self.logger.warning("Main site not accessible")
-                return cases
-            
-            # Try direct case search without following redirects
-            url = f"{self.base_url}/index.php?id=87"
-            response = self._make_request(url, follow_redirects=False)
-            
-            if not response:
-                self.logger.warning("Case search page not accessible")
-                return cases
-            
-            soup = self._parse_html(response)
-            if not soup:
-                return cases
-            
-            # Find recent cases (adjust selectors based on actual site structure)
-            case_elements = soup.find_all(['div', 'tr', 'li'], 
-                                        class_=re.compile(r'case|judgment|recent', re.I))
-            
-            for element in case_elements[:num_cases]:
-                case_data = self._extract_case_data_old(element)
-                if case_data:
-                    cases.append(case_data)
-                    
-        except Exception as e:
-            self.logger.error(f"Error scraping old site: {e}")
-        
-        return cases
-    
     def _extract_case_data_new(self, element) -> Optional[Dict]:
         """Extract case data from new site element."""
         try:
@@ -407,22 +353,22 @@ class LawExtractionScraper(ScraperBase):
                 case_data['case_name'] = name_elem.get_text(strip=True)
             
             # Extract citation
-            citation_elem = element.find(text=re.compile(r'\d{4}.*?KLR|.*?\[.*?\]', re.I))
+            citation_elem = element.find(string=re.compile(r'\d{4}.*?KLR|.*?\[.*?\]', re.I))
             if citation_elem:
                 case_data['citation'] = citation_elem.strip()
             
             # Extract court
-            court_elem = element.find(text=re.compile(r'(Court|Supreme|Appeal|High|Magistrate)', re.I))
+            court_elem = element.find(string=re.compile(r'(Court|Supreme|Appeal|High|Magistrate)', re.I))
             if court_elem:
                 case_data['court'] = court_elem.strip()
             
             # Extract date
-            date_elem = element.find(text=re.compile(r'\d{1,2}[-/]\d{1,2}[-/]\d{4}|\d{4}', re.I))
+            date_elem = element.find(string=re.compile(r'\d{1,2}[-/]\d{1,2}[-/]\d{4}|\d{4}', re.I))
             if date_elem:
                 case_data['judgment_date'] = date_elem.strip()
             
             # Extract judges
-            judges_elem = element.find(text=re.compile(r'(J|JJ|Judge|Justices)', re.I))
+            judges_elem = element.find(string=re.compile(r'(J|JJ|Judge|Justices)', re.I))
             if judges_elem:
                 case_data['judges'] = judges_elem.strip()
             
@@ -435,7 +381,6 @@ class LawExtractionScraper(ScraperBase):
                 else:
                     case_data['source_url'] = href
             
-            # Check for duplicates before returning
             if case_data['case_name']:
                 return case_data
             
@@ -445,67 +390,8 @@ class LawExtractionScraper(ScraperBase):
             self.logger.error(f"Error extracting case data: {e}")
             return None
     
-    def _extract_case_data_old(self, element) -> Optional[Dict]:
-        """Extract case data from old site element."""
-        try:
-            case_data = {
-                'case_name': '',
-                'citation': '',
-                'court': '',
-                'judgment_date': '',
-                'judges': '',
-                'source_url': '',
-                'scraped_at': datetime.now().isoformat()
-            }
-            
-            # Similar extraction logic for old site
-            text = element.get_text(strip=True)
-            
-            # Extract case name (usually first part)
-            lines = [line.strip() for line in text.split('\n') if line.strip()]
-            if lines:
-                case_data['case_name'] = lines[0]
-            
-            # Extract citation using regex
-            citation_match = re.search(r'\d{4}.*?KLR|.*?\[.*?\]', text)
-            if citation_match:
-                case_data['citation'] = citation_match.group()
-            
-            # Extract date
-            date_match = re.search(r'\d{1,2}[-/]\d{1,2}[-/]\d{4}|\d{4}', text)
-            if date_match:
-                case_data['judgment_date'] = date_match.group()
-            
-            # Extract link
-            link_elem = element.find('a', href=True)
-            if link_elem:
-                href = link_elem['href']
-                if href.startswith('/'):
-                    case_data['source_url'] = urljoin(self.base_url, href)
-                else:
-                    case_data['source_url'] = href
-            
-            # Check for duplicates before returning
-            if case_data['case_name']:
-                return case_data
-            
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"Error extracting case data from old site: {e}")
-            return None
-    
-    def save_data(self, data: List[Dict], filename: str = None) -> bool:
-        """
-        Save scraped data to CSV file and optionally to Elasticsearch.
-        
-        Args:
-            data: List of case dictionaries
-            filename: Output filename (optional)
-            
-        Returns:
-            True if successful, False otherwise
-        """
+    async def save_data(self, data: List[Dict], filename: str = None) -> bool:
+        """Save scraped data to CSV file and optionally to Elasticsearch."""
         if not data:
             self.logger.warning("No data to save")
             return False
@@ -527,9 +413,8 @@ class LawExtractionScraper(ScraperBase):
             
             self.logger.info(f"Saved {len(data)} cases to {filename}")
             
-            # Save to Elasticsearch if configured
-            if self.es_config.client:
-                self._save_to_elasticsearch(data)
+            # Save to Elasticsearch async
+            await self._save_to_elasticsearch(data)
             
             return True
             
@@ -537,32 +422,42 @@ class LawExtractionScraper(ScraperBase):
             self.logger.error(f"Error saving data: {e}")
             return False
     
-    def _save_to_elasticsearch(self, data: List[Dict]):
+    async def _save_to_elasticsearch(self, data: List[Dict]):
         """Save data to Elasticsearch."""
         try:
-            self.es_config.create_index()
+            await self.es_config.connect()
+            if not self.es_config.client:
+                return
+
+            await self.es_config.create_index()
             
+            tasks = []
             for i, case in enumerate(data):
                 case['document_type'] = 'case_law'
-                self.es_config.index_document(case, f"case_{i}")
+                tasks.append(self.es_config.index_document(case))
+            
+            if tasks:
+                await asyncio.gather(*tasks)
             
             self.logger.info(f"Indexed {len(data)} cases to Elasticsearch")
             
         except Exception as e:
             self.logger.error(f"Error saving to Elasticsearch: {e}")
 
-
-def main():
+async def main():
     """Main function to run scraper."""
     scraper = LawExtractionScraper()
-    cases = scraper.scrape(num_cases=10)
-    
-    if cases:
-        scraper.save_data(cases)
-        print(f"Successfully scraped and saved {len(cases)} cases")
-    else:
-        print("Failed to scrape any cases")
-
+    try:
+        cases = await scraper.scrape(num_cases=10)
+        if cases:
+            await scraper.save_data(cases)
+            print(f"Successfully scraped and saved {len(cases)} cases")
+        else:
+            print("Failed to scrape any cases")
+    finally:
+        await scraper.close()
+        if scraper.es_config.client:
+            await scraper.es_config.close()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

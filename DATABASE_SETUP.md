@@ -68,30 +68,37 @@ cd elasticsearch-8.11.0/
    curl -X GET "localhost:9200/_cluster/health?pretty"
    ```
 ### Index Mappings
-
-The scrapers automatically create indices with the following mapping:
-
-```json
-{
-  "mappings": {
-    "properties": {
-      "title": {"type": "text"},
-      "content": {"type": "text"},
-      "document_type": {"type": "keyword"},
-      "citation": {"type": "keyword"},
-      "court": {"type": "keyword"},
-      "judges": {"type": "text"},
-      "judgment_date": {"type": "date"},
-      "act_title": {"type": "text"},
-      "chapter_number": {"type": "keyword"},
-      "year_enacted": {"type": "integer"},
-      "legal_category": {"type": "keyword"},
-      "source_url": {"type": "keyword"},
-      "scraped_at": {"type": "date"}
-    }
-  }
-}
-```
+ 
+ The scrapers automatically create indices with the following mapping. All scrapers share the same index but are tagged with different `document_type` values (`case_law`, `legislation`, `case_analysis`).
+ 
+ ```json
+ {
+   "mappings": {
+     "properties": {
+       "document_type": {"type": "keyword"},
+       "scraped_at": {"type": "date"},
+       "source_url": {"type": "keyword"},
+       # Case Law Metadata
+       "case_name": {"type": "text"},
+       "citation": {"type": "keyword"},
+       "court": {"type": "keyword"},
+       "judgment_date": {"type": "date"},
+       "judges": {"type": "text"},
+       # Legislation (Acts/Bills) 
+       "act_title": {"type": "text"},
+       "chapter_number": {"type": "keyword"},
+       "year_enacted": {"type": "integer"},
+       "legal_category": {"type": "keyword"},
+       # Full-Text Analysis
+       "full_text": {"type": "text"},
+       "parties": {"type": "object"},
+       "legal_issues": {"type": "text"},
+       "decision": {"type": "text"},
+       "legal_principles": {"type": "text"}
+     }
+   }
+ }
+ ```
 
 ### Alternative Storage Options
 
