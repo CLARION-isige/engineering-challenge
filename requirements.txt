@@ -1,0 +1,30 @@
+# Web Scraping
+requests
+beautifulsoup4
+lxml
+selenium
+aiohttp
+aiofiles
+
+# Data Processing
+pandas
+numpy
+
+# Storage
+elasticsearch
+python-dotenv
+
+# Utilities
+python-dateutil
+urllib3
+fake-useragent
+tqdm
+
+# Text Processing (Level 3)
+nltk
+spacy
+
+# Development
+pytest
+black
+flake8
