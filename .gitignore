@@ -45,6 +45,9 @@ logs/
 
 # Elasticsearch
 elasticsearch-*/
+elastic-start-local/
+src/cleanup.py
+
 
 # Temporary files
 *.tmp
@@ -66,7 +69,3 @@ dmypy.json
 
 # Others 
 cleaning.txt
-
-# Elasticsearch
-elastic-start-local/
-src/cleanup.py
