@@ -53,6 +53,7 @@ src/cleanup.py
 *.tmp
 *.temp
 .cache/
+htmls/
 
 # Jupyter Notebooks
 .ipynb_checkpoints/
