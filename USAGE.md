@@ -51,7 +51,6 @@ python main.py case_analysis --num-cases 25
 python main.py all --num-cases 10 --min-acts 50 --concurrent
 ```
 
-
 #### Run all Scrapers concurrently with default values
 ```bash
 python main.py all --concurrent
