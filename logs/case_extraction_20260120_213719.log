@@ -1,0 +1,14 @@
+2026-01-20 21:37:19,489 - case_extraction - INFO - Starting scraping: Extracting 25 recent cases
+2026-01-20 21:37:19,489 - case_extraction - INFO - Attempting to scrape from new site...
+2026-01-20 21:37:19,759 - case_extraction - INFO - Starting scraping: Extracting 25 recent cases
+2026-01-20 21:37:19,760 - case_extraction - INFO - Attempting to scrape from new site...
+2026-01-20 21:37:24,278 - case_extraction - INFO - Feed fetch ok
+2026-01-20 21:37:24,317 - case_extraction - INFO - Feed entries found: 100
+2026-01-20 21:37:24,744 - case_extraction - INFO - Feed fetch ok
+2026-01-20 21:37:24,766 - case_extraction - INFO - Feed entries found: 100
+2026-01-20 21:37:51,110 - case_extraction - INFO - Successfully extracted 25 cases from new site
+2026-01-20 21:37:51,113 - case_extraction - INFO - Aiohttp session closed.
+2026-01-20 21:37:52,275 - case_extraction - INFO - Successfully extracted 25 cases from new site
+2026-01-20 21:37:52,276 - case_extraction - INFO - Saved 25 cases to output/cases_20260120_213752.csv
+2026-01-20 21:37:53,183 - case_extraction - INFO - Indexed 25 cases to Elasticsearch
+2026-01-20 21:37:53,194 - case_extraction - INFO - Aiohttp session closed.

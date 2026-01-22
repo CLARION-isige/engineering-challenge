@@ -1,0 +1,6 @@
+2026-01-20 21:37:19,688 - case_analysis - INFO - Starting scraping: Analyzing 25 cases in detail
+2026-01-20 21:38:09,302 - case_analysis - INFO - Successfully analyzed 25 cases
+2026-01-20 21:38:09,304 - case_analysis - INFO - Saved 25 analyzed cases to output/case_analysis_20260120_213809.json
+2026-01-20 21:38:09,304 - case_analysis - INFO - Analysis summary saved to output/case_analysis_summary_20260120_213809.json
+2026-01-20 21:38:14,401 - case_analysis - INFO - Indexed 25 analyzed cases to Elasticsearch
+2026-01-20 21:38:14,404 - case_analysis - INFO - Aiohttp session closed.

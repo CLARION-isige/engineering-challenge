@@ -1,0 +1,9 @@
+2026-01-20 21:37:19,580 - legislation - INFO - Starting scraping: Extracting at least 25 Acts
+2026-01-20 21:37:19,581 - legislation - INFO - Skipping new site (unresponsive), trying old site...
+2026-01-20 21:37:19,581 - legislation - INFO - Scraping legislation URL: https://kenyalaw.org/kl//index.php?id=12002
+2026-01-20 21:37:25,817 - legislation - INFO - Scraping legislation URL: https://kenyalaw.org/kl/index.php?id=12002
+2026-01-20 21:37:32,126 - legislation - INFO - Successfully extracted 25 Acts
+2026-01-20 21:37:32,127 - legislation - INFO - Saved 25 Acts to output/legislation_20260120_213732.json
+2026-01-20 21:37:32,127 - legislation - INFO - Summary saved to output/legislation_summary_20260120_213732.json
+2026-01-20 21:37:34,241 - legislation - INFO - Indexed 25 Acts to Elasticsearch
+2026-01-20 21:37:34,242 - legislation - INFO - Aiohttp session closed.
