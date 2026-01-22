@@ -46,18 +46,21 @@ python main.py case_analysis --num-cases 25
 - Extracts structured information from full judgments
 - Saves to `output/case_analysis_[timestamp].json`
 
-### Running all the scrapers 
-'''bash 
-  python main.py all --num-cases 10 --min-acts 50 --concurrent
-'''
-Run all Scrapers concurrently with default values
-'''bash 
-  python main.py all --concurrent
-'''
-Run all scrapers sequentially with default values
-'''bash 
-  python main.py all 
-'''
+#### Running all the scrapers 
+```bash
+python main.py all --num-cases 10 --min-acts 50 --concurrent
+```
+
+
+#### Run all Scrapers concurrently with default values
+```bash
+python main.py all --concurrent
+```
+
+#### Run all scrapers sequentially with default values
+```bash
+python main.py all 
+```
 
 ## Advanced Usage (Async API)
 
